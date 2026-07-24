@@ -1,0 +1,52 @@
+services:
+  netprobe:
+    image: ghcr.io/arylite/netprobe-exporter:latest
+    # To run against a local checkout instead, comment out the image above and
+    # uncomment the build context below.
+    # build: ../..
+    container_name: netprobe
+    volumes:
+      - ./netprobe.yml:/etc/netprobe/netprobe.yml:ro
+    ports: ["9427:9427"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9427/-/healthy"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    ports: ["9090:9090"]
+    depends_on: [netprobe]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.1.1
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:

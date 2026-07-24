@@ -1,0 +1,784 @@
+{
+  "uid": "netprobe",
+  "title": "netprobe — multi-protocol network probing",
+  "description": "Round-trip time, packet loss and jitter per target and protocol (ICMP, TCP, UDP). Source: netprobe-exporter.",
+  "tags": ["netprobe", "network", "latency"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Provider",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(netprobe_probe_success, provider)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(netprobe_probe_success, provider)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": { "text": ["All"], "value": ["$__all"] },
+        "options": [],
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "scope",
+        "label": "Scope",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(netprobe_probe_success{provider=~\"$provider\"}, scope)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(netprobe_probe_success{provider=~\"$provider\"}, scope)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": { "text": ["All"], "value": ["$__all"] },
+        "options": [],
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "target",
+        "label": "Target",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(netprobe_probe_success{provider=~\"$provider\",scope=~\"$scope\"}, name)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(netprobe_probe_success{provider=~\"$provider\",scope=~\"$scope\"}, name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": { "text": ["All"], "value": ["$__all"] },
+        "options": [],
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "proto",
+        "label": "Protocol",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(netprobe_probe_success, proto)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(netprobe_probe_success, proto)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "current": { "text": ["All"], "value": ["$__all"] },
+        "options": [],
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Probe availability",
+      "description": "Share of probes that received at least one reply in their last cycle.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "avg(netprobe_probe_success{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"})",
+          "legendFormat": "availability"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#d03b3b", "value": null },
+              { "color": "#fab219", "value": 0.95 },
+              { "color": "#0ca30c", "value": 0.999 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Packet loss (5m)",
+      "description": "1 − received/sent over five minutes, across all selected probes. Computed from the counters, so it does not depend on the probe interval.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1 - sum(rate(netprobe_packets_received_total{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}[5m])) / sum(rate(netprobe_packets_sent_total{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}[5m]))",
+          "legendFormat": "loss"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "min": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#0ca30c", "value": null },
+              { "color": "#fab219", "value": 0.01 },
+              { "color": "#ec835a", "value": 0.02 },
+              { "color": "#d03b3b", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Median RTT",
+      "description": "Median of the mean round-trip times across all selected probes. Informational: an acceptable RTT depends on the target, so no colour thresholds are applied.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "quantile(0.5, netprobe_rtt_seconds{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"})",
+          "legendFormat": "median rtt"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "min": 0,
+          "color": { "mode": "fixed", "fixedColor": "#3987e5" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Peak jitter",
+      "description": "Largest round-trip time standard deviation observed in a single cycle across the selected probes.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "max(netprobe_rtt_stddev_seconds{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"})",
+          "legendFormat": "peak jitter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "min": 0,
+          "color": { "mode": "fixed", "fixedColor": "#d95926" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Latency and loss",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Round-trip time",
+      "description": "Mean round-trip time of each cycle. A gap means a cycle received no reply at all: the exporter reports NaN rather than repeating the previous value.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_rtt_seconds{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}",
+          "legendFormat": "{{name}} · {{proto}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": { "mode": "palette-classic-by-name" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["mean", "max", "lastNotNull"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Packet loss",
+      "description": "1 − received/sent over the rolling window. The dashed line marks 2%.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1 - rate(netprobe_packets_received_total{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}[$__rate_interval]) / rate(netprobe_packets_sent_total{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}[$__rate_interval])",
+          "legendFormat": "{{name}} · {{proto}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": { "mode": "palette-classic-by-name" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "#fab219", "value": 0.02 }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisSoftMax": 0.05,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "thresholdsStyle": { "mode": "dashed" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["mean", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Jitter and path divergence",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Jitter (RTT standard deviation)",
+      "description": "Spread of the samples within a cycle. It often rises before mean latency does when a path starts to degrade.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_rtt_stddev_seconds{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}",
+          "legendFormat": "{{name}} · {{proto}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": { "mode": "palette-classic-by-name" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["mean", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "TCP minus ICMP",
+      "description": "Round-trip time difference between the TCP and ICMP probes of the same target. A stable value means both take the same path; a step change indicates the data plane diverging from the control plane, such as a different point of presence or ICMP shaping. Only appears for targets probed over both protocols.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_rtt_seconds{proto=\"tcp\",name=~\"$target\",provider=~\"$provider\",scope=~\"$scope\"} - on(name) netprobe_rtt_seconds{proto=\"icmp\",name=~\"$target\",provider=~\"$provider\",scope=~\"$scope\"}",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic-by-name" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "#898781", "value": 0 }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "thresholdsStyle": { "mode": "line" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["mean", "min", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "Current state and name resolution",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Probe state",
+      "description": "One row per target and protocol. Click a header to sort.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 11, "w": 15, "x": 0, "y": 27 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_probe_success{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_rtt_seconds{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_rtt_stddev_seconds{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1 - rate(netprobe_packets_received_total{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}[5m]) / rate(netprobe_packets_sent_total{name=~\"$target\",proto=~\"$proto\",provider=~\"$provider\",scope=~\"$scope\"}[5m])",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
+            "indexByName": {
+              "name": 0,
+              "proto": 1,
+              "port": 2,
+              "host": 3,
+              "provider": 4,
+              "scope": 5,
+              "Value #A": 6,
+              "Value #B": 7,
+              "Value #D": 8,
+              "Value #C": 9
+            },
+            "renameByName": {
+              "name": "Target",
+              "proto": "Proto",
+              "port": "Port",
+              "host": "Host",
+              "provider": "Provider",
+              "scope": "Scope",
+              "Value #A": "State",
+              "Value #B": "RTT",
+              "Value #C": "Jitter",
+              "Value #D": "Loss 5m"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true,
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "State" },
+            "properties": [
+              { "id": "custom.width", "value": 84 },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": { "text": "up", "color": "#0ca30c", "index": 0 },
+                      "0": { "text": "down", "color": "#d03b3b", "index": 1 }
+                    }
+                  }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Proto" },
+            "properties": [
+              { "id": "custom.width", "value": 76 },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "icmp": { "text": "icmp", "color": "#3987e5", "index": 0 },
+                      "tcp": { "text": "tcp", "color": "#d95926", "index": 1 },
+                      "udp": { "text": "udp", "color": "#199e70", "index": 2 }
+                    }
+                  }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "RTT" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 1 },
+              { "id": "color", "value": { "mode": "continuous-blues" } },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Jitter" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 1 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Loss 5m" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 2 },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "#0ca30c", "value": null },
+                    { "color": "#fab219", "value": 0.01 },
+                    { "color": "#ec835a", "value": 0.02 },
+                    { "color": "#d03b3b", "value": 0.05 }
+                  ]
+                }
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" },
+        "sortBy": [{ "displayName": "Target", "desc": false }]
+      }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Resolved address",
+      "description": "Address the target currently resolves to. For a hostname behind anycast or a CDN, this is the point of presence actually answering.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 27 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_resolved_ip_info{name=~\"$target\",proto=~\"$proto\"}",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
+            "indexByName": { "name": 0, "proto": 1, "ip": 2, "host": 3 },
+            "renameByName": {
+              "name": "Target",
+              "proto": "Proto",
+              "ip": "Address",
+              "host": "Host"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true,
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Proto" },
+            "properties": [
+              { "id": "custom.width", "value": 76 },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "icmp": { "text": "icmp", "color": "#3987e5", "index": 0 },
+                      "tcp": { "text": "tcp", "color": "#d95926", "index": 1 },
+                      "udp": { "text": "udp", "color": "#199e70", "index": 2 }
+                    }
+                  }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" },
+        "sortBy": [{ "displayName": "Target", "desc": false }]
+      }
+    },
+    {
+      "id": 11,
+      "type": "bargauge",
+      "title": "Distinct addresses seen",
+      "description": "Number of different addresses a target resolved to over the selected time range. 1 means a stable path; 2 or more means the target moved between points of presence.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 9, "x": 15, "y": 33 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "count by (name) (count_over_time(netprobe_resolved_ip_info{name=~\"$target\",proto=~\"$proto\"}[$__range]))",
+          "instant": true,
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "color": { "mode": "continuous-blues" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300
+      }
+    }
+  ]
+}

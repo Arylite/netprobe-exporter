@@ -1,0 +1,8 @@
+/netprobe-exporter
+/dist/
+*.exe
+*.test
+*.out
+
+# Local configuration. netprobe.yml is the committed example.
+/targets.yml
