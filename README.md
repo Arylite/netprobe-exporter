@@ -88,6 +88,10 @@ targets:
     labels: { scope: internet }
     probes: [icmp, "tcp:443"]
     interval: 10s # overrides the default for this target
+
+  - name: partner-api
+    host: api.example.net
+    probes: ["tcp:443:50000"] # destination port 443, source port pinned to 50000
 ```
 
 | Key | Scope | Default | Description |
@@ -99,7 +103,7 @@ targets:
 | `defaults.count` | global | `5` | Samples per cycle |
 | `name` | target | value of `host` | Series identity |
 | `host` | target | required | IP address or hostname |
-| `probes` | target | required | `icmp`, `tcp:<port>`, `udp:<port>` |
+| `probes` | target | required | `icmp`, `tcp:<port>[:<local port>]`, `udp:<port>[:<local port>]` |
 | `labels` | target | none | Free-form labels added to every metric |
 | `payload` | target | `00` | Hex-encoded UDP payload |
 | `interval`, `timeout`, `count` | target | from `defaults` | Per-target overrides |
@@ -112,6 +116,27 @@ labels. Unknown configuration keys are rejected at startup rather than ignored.
 Hostnames are resolved on every cycle. `netprobe_resolved_ip_info` reports the address
 that was actually probed, which identifies the point of presence answering for an
 anycast or CDN name.
+
+### Pinning the local port
+
+A TCP or UDP probe takes an optional third field, the local source port. The port
+after the protocol is always the destination:
+
+```yaml
+probes:
+  - "tcp:443" # destination 443, source port ephemeral (the default)
+  - "tcp:443:50000" # destination 443, source port pinned to 50000
+  - "udp:53:5353" # destination 53, source port pinned to 5353
+```
+
+Pin it when something on the path matches on the source port: a firewall rule, an
+ACL, a QoS class, or a NAT mapping you want the probe to reuse rather than churn.
+ICMP has no ports and rejects the field.
+
+Pick a port outside the ephemeral range, and a different one per probe: two probes
+sharing a pinned source port collide, and the loser reports the bind error as loss.
+The pinned port does not appear in the metric labels, so `tcp:443` and
+`tcp:443:50000` against the same target write to the same series.
 
 ## Probe behaviour
 

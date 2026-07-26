@@ -34,11 +34,27 @@ func newProber(p Probe, t Target, privileged bool) Prober {
 	case "icmp":
 		return icmpProber{privileged: privileged}
 	case "tcp":
-		return tcpProber{port: p.Port}
+		return tcpProber{port: p.Port, local: localAddr(p.Proto, p.LocalPort)}
 	case "udp":
-		return udpProber{port: p.Port, payload: t.payload}
+		return udpProber{port: p.Port, local: localAddr(p.Proto, p.LocalPort), payload: t.payload}
 	}
 	panic("unreachable: parseProbe rejects unknown protocols")
+}
+
+// localAddr is the source address a probe binds to, nil for an ephemeral port.
+// Pinning it lets a firewall or an ACL on the far side match the probe.
+//
+// ponytail: no SO_REUSEADDR. Samples close with RST and so leave no TIME_WAIT,
+// which keeps the port free for the next one; add a Dialer.Control hook if a
+// rebind ever fails.
+func localAddr(proto string, port int) net.Addr {
+	if port == 0 {
+		return nil
+	}
+	if proto == "udp" {
+		return &net.UDPAddr{Port: port}
+	}
+	return &net.TCPAddr{Port: port}
 }
 
 // ICMP
@@ -75,7 +91,10 @@ func (p icmpProber) Probe(host string, count int, timeout time.Duration) Result 
 
 // TCP
 
-type tcpProber struct{ port int }
+type tcpProber struct {
+	port  int
+	local net.Addr
+}
 
 func (p tcpProber) Probe(host string, count int, timeout time.Duration) Result {
 	addr := net.JoinHostPort(host, strconv.Itoa(p.port))
@@ -85,7 +104,7 @@ func (p tcpProber) Probe(host string, count int, timeout time.Duration) Result {
 		if i > 0 {
 			time.Sleep(interSample)
 		}
-		d, ip, err := tcpRTT(addr, timeout)
+		d, ip, err := tcpRTT(addr, p.local, timeout)
 		if err != nil {
 			r.Err = err
 			continue
@@ -103,9 +122,10 @@ func (p tcpProber) Probe(host string, count int, timeout time.Duration) Result {
 // completes, which happens when the SYN-ACK is received. The measurement carries
 // a few hundred microseconds of scheduler overhead and completes the handshake,
 // which is accurate enough for path monitoring but not for sub-millisecond work.
-func tcpRTT(addr string, timeout time.Duration) (time.Duration, string, error) {
+func tcpRTT(addr string, local net.Addr, timeout time.Duration) (time.Duration, string, error) {
+	dialer := net.Dialer{Timeout: timeout, LocalAddr: local}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+	conn, err := dialer.Dial("tcp", addr)
 	d := time.Since(start)
 	if err != nil {
 		return 0, "", err
@@ -123,6 +143,7 @@ func tcpRTT(addr string, timeout time.Duration) (time.Duration, string, error) {
 
 type udpProber struct {
 	port    int
+	local   net.Addr
 	payload []byte
 }
 
@@ -134,7 +155,7 @@ func (p udpProber) Probe(host string, count int, timeout time.Duration) Result {
 		if i > 0 {
 			time.Sleep(interSample)
 		}
-		d, ip, err := udpRTT(addr, p.payload, timeout)
+		d, ip, err := udpRTT(addr, p.local, p.payload, timeout)
 		if ip != "" && r.IP == "" {
 			r.IP = ip
 		}
@@ -153,8 +174,9 @@ func (p udpProber) Probe(host string, count int, timeout time.Duration) Result {
 // connected UDP socket. Both outcomes prove the host was reached and are counted
 // as a success; only a timeout counts as a loss. This needs no raw socket and no
 // additional capability.
-func udpRTT(addr string, payload []byte, timeout time.Duration) (time.Duration, string, error) {
-	conn, err := net.DialTimeout("udp", addr, timeout) // resolves, sends nothing
+func udpRTT(addr string, local net.Addr, payload []byte, timeout time.Duration) (time.Duration, string, error) {
+	dialer := net.Dialer{Timeout: timeout, LocalAddr: local}
+	conn, err := dialer.Dial("udp", addr) // resolves and binds, sends nothing
 	if err != nil {
 		return 0, "", err
 	}

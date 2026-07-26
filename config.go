@@ -50,8 +50,9 @@ type Config struct {
 }
 
 type Probe struct {
-	Proto string // icmp, tcp, udp
-	Port  int    // 0 for icmp
+	Proto     string // icmp, tcp, udp
+	Port      int    // destination port, 0 for icmp
+	LocalPort int    // source port to bind to, 0 for an ephemeral one
 }
 
 // PortLabel is the "port" label value: empty for protocols without a port.
@@ -66,13 +67,20 @@ func (p Probe) String() string {
 	if p.Port == 0 {
 		return p.Proto
 	}
-	return p.Proto + ":" + strconv.Itoa(p.Port)
+	s := p.Proto + ":" + strconv.Itoa(p.Port)
+	if p.LocalPort != 0 {
+		s += ":" + strconv.Itoa(p.LocalPort)
+	}
+	return s
 }
 
-// parseProbe turns "icmp", "tcp:443" or "udp:53" into a Probe.
+// parseProbe turns "icmp", "tcp:443" or "udp:53:5353" into a Probe. The
+// optional third field pins the local source port, which is ephemeral by
+// default; ICMP has no ports at all.
 func parseProbe(s string) (Probe, error) {
-	proto, portStr, hasPort := strings.Cut(strings.TrimSpace(s), ":")
+	proto, rest, hasPort := strings.Cut(strings.TrimSpace(s), ":")
 	proto = strings.ToLower(proto)
+	portStr, localStr, hasLocal := strings.Cut(rest, ":")
 	switch proto {
 	case "icmp":
 		if hasPort {
@@ -83,14 +91,28 @@ func parseProbe(s string) (Probe, error) {
 		if !hasPort {
 			return Probe{}, fmt.Errorf("probe %q: %s needs a port (e.g. %s:443)", s, proto, proto)
 		}
-		port, err := strconv.Atoi(portStr)
-		if err != nil || port < 1 || port > 65535 {
-			return Probe{}, fmt.Errorf("probe %q: bad port %q", s, portStr)
+		port, err := parsePort(portStr)
+		if err != nil {
+			return Probe{}, fmt.Errorf("probe %q: %w", s, err)
 		}
-		return Probe{Proto: proto, Port: port}, nil
+		local := 0
+		if hasLocal {
+			if local, err = parsePort(localStr); err != nil {
+				return Probe{}, fmt.Errorf("probe %q: local %w", s, err)
+			}
+		}
+		return Probe{Proto: proto, Port: port, LocalPort: local}, nil
 	default:
 		return Probe{}, fmt.Errorf("probe %q: unknown protocol %q (want icmp, tcp or udp)", s, proto)
 	}
+}
+
+func parsePort(s string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 65535 {
+		return 0, fmt.Errorf("bad port %q", s)
+	}
+	return n, nil
 }
 
 func LoadConfig(path string) (*Config, error) {

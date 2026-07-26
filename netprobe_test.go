@@ -11,12 +11,14 @@ import (
 
 func TestParseProbe(t *testing.T) {
 	ok := map[string]Probe{
-		"icmp":      {Proto: "icmp"},
-		"tcp:443":   {Proto: "tcp", Port: 443},
-		"udp:53":    {Proto: "udp", Port: 53},
-		"TCP:22":    {Proto: "tcp", Port: 22},
-		" icmp ":    {Proto: "icmp"},
-		"tcp:65535": {Proto: "tcp", Port: 65535},
+		"icmp":         {Proto: "icmp"},
+		"tcp:443":      {Proto: "tcp", Port: 443},
+		"udp:53":       {Proto: "udp", Port: 53},
+		"TCP:22":       {Proto: "tcp", Port: 22},
+		" icmp ":       {Proto: "icmp"},
+		"tcp:65535":    {Proto: "tcp", Port: 65535},
+		"tcp:443:5000": {Proto: "tcp", Port: 443, LocalPort: 5000},
+		"udp:53:5353":  {Proto: "udp", Port: 53, LocalPort: 5353},
 	}
 	for in, want := range ok {
 		got, err := parseProbe(in)
@@ -28,7 +30,10 @@ func TestParseProbe(t *testing.T) {
 		}
 	}
 
-	for _, in := range []string{"tcp", "tcp:", "tcp:0", "tcp:99999", "tcp:https", "icmp:1", "sctp:80", ""} {
+	for _, in := range []string{
+		"tcp", "tcp:", "tcp:0", "tcp:99999", "tcp:https", "icmp:1", "sctp:80", "",
+		"tcp:443:", "tcp:443:0", "tcp:443:99999", "tcp:443:ephemeral", "icmp:1:2",
+	} {
 		if _, err := parseProbe(in); err == nil {
 			t.Fatalf("parseProbe(%q): expected an error", in)
 		}
@@ -83,6 +88,16 @@ func TestParseConfig(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c.Targets[0].parsed, []Probe{{Proto: "icmp"}, {Proto: "tcp", Port: 443}}) {
 		t.Fatalf("probes: %+v", c.Targets[0].parsed)
+	}
+}
+
+// The configurations shipped with the repository must stay loadable, otherwise
+// the documented example is the first thing a new user finds broken.
+func TestShippedConfigsParse(t *testing.T) {
+	for _, path := range []string{"netprobe.yml", "examples/docker-compose/netprobe.yml"} {
+		if _, err := LoadConfig(path); err != nil {
+			t.Errorf("%s: %v", path, err)
+		}
 	}
 }
 
@@ -183,6 +198,41 @@ func TestTCPProbe(t *testing.T) {
 	}
 }
 
+// A pinned local port must be the one the far side sees as the source.
+func TestTCPProbeLocalPort(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	seen := make(chan string, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		_, port, _ := net.SplitHostPort(c.RemoteAddr().String())
+		seen <- port
+		c.Close()
+	}()
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	local := freePort(t)
+	p := newProber(mustProbe(t, "tcp:"+port+":"+local), Target{}, false)
+
+	if r := p.Probe("127.0.0.1", 1, time.Second); r.Received != 1 {
+		t.Fatalf("pinned source port: received=%d err=%v", r.Received, r.Err)
+	}
+	select {
+	case got := <-seen:
+		if got != local {
+			t.Fatalf("source port = %s, want %s", got, local)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no connection accepted")
+	}
+}
+
 func TestUDPProbeReply(t *testing.T) {
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -224,7 +274,7 @@ func TestUDPProbeClosedPortIsReachable(t *testing.T) {
 	addr := pc.LocalAddr().String()
 	pc.Close()
 
-	d, ip, err := udpRTT(addr, []byte{0}, time.Second)
+	d, ip, err := udpRTT(addr, nil, []byte{0}, time.Second)
 	if err != nil {
 		t.Fatalf("closed port should be reachable, got %v", err)
 	}
@@ -235,7 +285,7 @@ func TestUDPProbeClosedPortIsReachable(t *testing.T) {
 
 func TestUDPProbeBlackholeIsLoss(t *testing.T) {
 	// 203.0.113.0/24 is TEST-NET-3: routable in form, never answers.
-	d, _, err := udpRTT("203.0.113.1:9", []byte{0}, 300*time.Millisecond)
+	d, _, err := udpRTT("203.0.113.1:9", nil, []byte{0}, 300*time.Millisecond)
 	if err == nil {
 		t.Fatalf("blackhole should time out, got rtt=%v", d)
 	}
@@ -257,6 +307,19 @@ func TestSummarize(t *testing.T) {
 	if empty.Received != 0 || empty.Avg != 0 {
 		t.Fatalf("%+v", empty)
 	}
+}
+
+// freePort returns a port that is free right now. Racy in principle, good
+// enough to hand to a single dial in a single test process.
+func freePort(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	return port
 }
 
 func mustProbe(t *testing.T, s string) Probe {
