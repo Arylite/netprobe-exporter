@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -ldflags="-s -w -X main.version=${VERSION} -X main.revision=${REVISION} -X main.buildDate=${BUILD_DATE}" \
     -o /netprobe-exporter ./cmd/netprobe-exporter
 
-FROM alpine:3.21
+FROM alpine:3.24
 
 # The file capability lets the exporter open raw ICMP sockets as a non-root
 # user. CAP_NET_RAW is part of the default Docker capability set; drop it and
