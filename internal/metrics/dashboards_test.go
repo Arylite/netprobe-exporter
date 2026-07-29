@@ -1,4 +1,4 @@
-package main
+package metrics
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const dashboardDir = "examples/docker-compose/grafana/dashboards"
+const dashboardDir = "../../examples/docker-compose/grafana/dashboards"
 
 // datasourceUID must match the uid in provisioning/datasources/prometheus.yml.
 const datasourceUID = "prometheus"
@@ -22,31 +22,33 @@ func exportedMetricNames(t *testing.T) map[string]bool {
 	t.Helper()
 
 	reg := prometheus.NewRegistry()
-	m := newMetrics(reg, nil)
+	m := New(reg, nil)
 
-	// A vec with no children collects nothing, so bind one of each.
-	lv := []string{"target", "host", "icmp", ""}
-	m.success.WithLabelValues(lv...)
-	m.rtt.WithLabelValues(lv...)
-	m.rttMin.WithLabelValues(lv...)
-	m.rttMax.WithLabelValues(lv...)
-	m.rttStdDev.WithLabelValues(lv...)
-	m.loss.WithLabelValues(lv...)
-	m.lastProbe.WithLabelValues(lv...)
-	m.sent.WithLabelValues(lv...)
-	m.received.WithLabelValues(lv...)
-	m.resolved.WithLabelValues("target", "host", "icmp", "192.0.2.1")
+	// A vec with no children collects nothing, so bind one child of each.
+	m.ProbeSeries([]string{"target", "host", "icmp", "", ""})
+	m.PathSeries([]string{"target", "host", ""})
+	m.PathHopRTT.WithLabelValues("target", "host", "", "1")
+	m.PathHopInfo.WithLabelValues("target", "host", "", "1", "192.0.2.1")
+	m.Resolved.WithLabelValues("target", "host", "icmp", "", "192.0.2.1")
+	m.WANInfo.WithLabelValues("203.0.113.1", "100.64.0.1")
 
 	families, err := reg.Gather()
 	if err != nil {
 		t.Fatalf("gather: %v", err)
 	}
 	names := map[string]bool{
-		// Registered in main() rather than newMetrics.
+		// Registered in main() rather than New.
 		"netprobe_build_info": true,
 	}
 	for _, f := range families {
 		names[f.GetName()] = true
+		// A histogram is queried through the series the client library derives
+		// from it, which never appear in the registry under their own name.
+		if len(f.GetMetric()) > 0 && f.GetMetric()[0].Histogram != nil {
+			for _, suffix := range []string{"_bucket", "_sum", "_count"} {
+				names[f.GetName()+suffix] = true
+			}
+		}
 	}
 	return names
 }
@@ -83,6 +85,15 @@ func TestDashboards(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", file, err)
 		}
+		// Grafana renders these in browsers and terminals of every encoding,
+		// so they are kept to plain ASCII.
+		for i, b := range raw {
+			if b > 127 {
+				t.Errorf("%s: non-ASCII byte %#x at offset %d", file, b, i)
+				break
+			}
+		}
+
 		var d dashboard
 		if err := json.Unmarshal(raw, &d); err != nil {
 			// Grafana silently refuses to provision a dashboard that does not

@@ -1,6 +1,6 @@
 {
   "uid": "netprobe-timeline",
-  "title": "netprobe — status timeline",
+  "title": "netprobe - status timeline",
   "description": "When each probe was up or down, how often it flapped, and how latency was distributed while it was up. Built for looking backwards at an incident rather than at the current value. Source: netprobe-exporter.",
   "tags": ["netprobe", "network", "incident"],
   "timezone": "browser",
@@ -105,7 +105,7 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "netprobe_probe_success{name=~\"$target\",proto=~\"$proto\",scope=~\"$scope\"}",
-          "legendFormat": "{{name}} · {{proto}}{{port}}"
+          "legendFormat": "{{name}} / {{proto}}{{port}}"
         }
       ],
       "fieldConfig": {
@@ -168,7 +168,7 @@
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sort_desc(changes(netprobe_probe_success{name=~\"$target\",proto=~\"$proto\",scope=~\"$scope\"}[$__range]))",
           "instant": true,
-          "legendFormat": "{{name}} · {{proto}}"
+          "legendFormat": "{{name}} / {{proto}}"
         }
       ],
       "fieldConfig": {
@@ -287,7 +287,7 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "netprobe_rtt_seconds{name=~\"$target\",proto=~\"$proto\",scope=~\"$scope\"}",
-          "legendFormat": "{{name}} · {{proto}}"
+          "legendFormat": "{{name}} / {{proto}}"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "s", "custom": {} }, "overrides": [] },
@@ -325,7 +325,7 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "1 - rate(netprobe_packets_received_total{name=~\"$target\",proto=~\"$proto\",scope=~\"$scope\"}[$__rate_interval]) / rate(netprobe_packets_sent_total{name=~\"$target\",proto=~\"$proto\",scope=~\"$scope\"}[$__rate_interval])",
-          "legendFormat": "{{name}} · {{proto}}"
+          "legendFormat": "{{name}} / {{proto}}"
         }
       ],
       "fieldConfig": {

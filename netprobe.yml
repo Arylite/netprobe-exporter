@@ -16,6 +16,20 @@ defaults:
   timeout: 2s # per sample
   count: 5 # samples per cycle
 
+# Path probing, for the targets that opt in with "traceroute: true". A trace
+# costs up to max_hops timeouts, so it runs far less often than a probe.
+traceroute:
+  interval: 60s
+  timeout: 1s
+  max_hops: 20
+
+# Public address lookup over STUN, which is what detects an access link
+# reconnecting. Disabled until a server is named: the exporter should not talk
+# to a third party the operator did not choose.
+wan:
+  server: stun.l.google.com:19302
+  interval: 60s
+
 targets:
   # A local reference separates "my uplink is down" from "the remote is down".
   - name: gateway
@@ -27,13 +41,17 @@ targets:
     host: 1.1.1.1
     labels: { scope: internet, provider: cloudflare }
     probes: [icmp, "tcp:443"]
+    traceroute: true # walk the route and report where the latency appears
 
   # Probing the same target over ICMP and TCP exposes the difference between
-  # the control plane and the data plane.
+  # the control plane and the data plane. Listing both families probes the A
+  # and the AAAA record separately, which is what makes a broken IPv6 path
+  # visible instead of hidden behind a happy-eyeballs fallback.
   - name: example-site
     host: www.example.com
     labels: { scope: internet, provider: example }
     probes: [icmp, "tcp:443"]
+    families: [ipv4, ipv6]
 
   # A third field pins the local source port, which a firewall rule or an ACL on
   # the path can then match. Use a port outside the ephemeral range, and a
