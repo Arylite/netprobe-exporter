@@ -1,0 +1,43 @@
+# Example configuration for the Prometheus and Grafana stack.
+#
+# The `scope` and `provider` labels drive the dashboard filters. Rename them
+# here and the dashboard variables need renaming too.
+
+listen: ":9427"
+privileged: true
+
+defaults:
+  interval: 15s
+  timeout: 2s
+  count: 5
+
+targets:
+  - name: gateway
+    host: 192.168.1.1
+    labels: { scope: local, provider: lan }
+    probes: [icmp]
+
+  - name: cloudflare-dns
+    host: 1.1.1.1
+    labels: { scope: internet, provider: cloudflare }
+    probes: [icmp, "tcp:443"]
+
+  - name: quad9-dns
+    host: 9.9.9.9
+    labels: { scope: internet, provider: quad9 }
+    probes: [icmp, "tcp:443"]
+
+  # Probed over both ICMP and TCP, which is what the "TCP minus ICMP" panel
+  # compares.
+  - name: example-site
+    host: www.example.com
+    labels: { scope: internet, provider: example }
+    probes: [icmp, "tcp:443"]
+
+  # A real DNS query for www.example.com; a silent open port would otherwise
+  # look like 100% loss.
+  - name: google-dns
+    host: 8.8.8.8
+    labels: { scope: internet, provider: google }
+    probes: ["udp:53"]
+    payload: "abcd0100000100000000000003777777076578616d706c6503636f6d0000010001"

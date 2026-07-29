@@ -1,0 +1,42 @@
+# netprobe-exporter configuration.
+#
+# Every target needs a host and at least one probe. Labels are free-form and are
+# attached to every metric of that target.
+#
+# Probe syntax: icmp | tcp:<port> | udp:<port>
+
+listen: ":9427"
+privileged: true # raw ICMP sockets; see README for the unprivileged mode
+
+defaults:
+  interval: 15s # one probing cycle per target and protocol
+  timeout: 2s # per sample
+  count: 5 # samples per cycle
+
+targets:
+  # A local reference separates "my uplink is down" from "the remote is down".
+  - name: gateway
+    host: 192.168.1.1
+    labels: { scope: local }
+    probes: [icmp]
+
+  - name: cloudflare-dns
+    host: 1.1.1.1
+    labels: { scope: internet, provider: cloudflare }
+    probes: [icmp, "tcp:443"]
+
+  # Probing the same target over ICMP and TCP exposes the difference between
+  # the control plane and the data plane.
+  - name: example-site
+    host: www.example.com
+    labels: { scope: internet, provider: example }
+    probes: [icmp, "tcp:443"]
+
+  # UDP probes need a payload the service actually answers. This one is an A
+  # query for www.example.com; without it a silent open port looks like 100%
+  # loss. See the UDP section of the README.
+  - name: google-dns
+    host: 8.8.8.8
+    labels: { scope: internet, provider: google }
+    probes: ["udp:53"]
+    payload: "abcd0100000100000000000003777777076578616d706c6503636f6d0000010001"

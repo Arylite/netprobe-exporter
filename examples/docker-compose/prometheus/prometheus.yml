@@ -1,0 +1,16 @@
+global:
+  # Keep this at or below the smallest probe interval in netprobe.yml, otherwise
+  # completed cycles are measured but never sampled.
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # No relabeling or multi-target pattern: the target labels are carried by the
+  # exporter itself.
+  - job_name: netprobe
+    static_configs:
+      - targets: ["netprobe:9427"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
