@@ -34,6 +34,14 @@ targets:
     labels: { scope: internet, provider: example }
     probes: [icmp, "tcp:443"]
 
+  # A third field pins the local source port instead of taking an ephemeral one,
+  # so a firewall rule or an ACL on the path can match the probe:
+  #
+  # - name: partner-api
+  #   host: api.example.net
+  #   labels: { scope: internet, provider: example }
+  #   probes: ["tcp:443:50000"] # destination 443, source 50000
+
   # A real DNS query for www.example.com; a silent open port would otherwise
   # look like 100% loss.
   - name: google-dns

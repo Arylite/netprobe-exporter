@@ -3,7 +3,10 @@
 # Every target needs a host and at least one probe. Labels are free-form and are
 # attached to every metric of that target.
 #
-# Probe syntax: icmp | tcp:<port> | udp:<port>
+# Probe syntax: icmp | tcp:<port>[:<local port>] | udp:<port>[:<local port>]
+#
+# The port after the protocol is the destination. A third field pins the local
+# source port, which is otherwise picked from the ephemeral range.
 
 listen: ":9427"
 privileged: true # raw ICMP sockets; see README for the unprivileged mode
@@ -31,6 +34,15 @@ targets:
     host: www.example.com
     labels: { scope: internet, provider: example }
     probes: [icmp, "tcp:443"]
+
+  # A third field pins the local source port, which a firewall rule or an ACL on
+  # the path can then match. Use a port outside the ephemeral range, and a
+  # different one per probe: two probes sharing a source port collide.
+  #
+  # - name: partner-api
+  #   host: api.example.net
+  #   labels: { scope: internet, provider: example }
+  #   probes: ["tcp:443:50000"] # destination 443, source 50000
 
   # UDP probes need a payload the service actually answers. This one is an A
   # query for www.example.com; without it a silent open port looks like 100%
