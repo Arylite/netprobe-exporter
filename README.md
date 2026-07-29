@@ -158,7 +158,7 @@ sysctls:
 ## Prometheus and Grafana example
 
 [`examples/docker-compose`](examples/docker-compose) contains a complete stack: the
-exporter, Prometheus, and Grafana with a provisioned data source and dashboard.
+exporter, Prometheus, and Grafana with a provisioned data source and dashboards.
 
 ```sh
 cd examples/docker-compose
@@ -166,7 +166,21 @@ docker compose up -d
 ```
 
 Grafana is then available on <http://localhost:3000> with the default `admin` /
-`admin` credentials, and the dashboard is preloaded in the Network folder.
+`admin` credentials, and the dashboards are preloaded in the Network folder.
+
+| Dashboard | Answers |
+| --- | --- |
+| netprobe | Fleet overview: round-trip time, loss and jitter across every target |
+| netprobe — target drilldown | One target in detail: RTT envelope, loss, jitter, addresses it resolved to |
+| netprobe — availability and loss budget | Availability, downtime and loss over the range, scored against an objective |
+| netprobe — protocol comparison | How ICMP, TCP and UDP differ against the same hosts |
+| netprobe — status timeline | When each probe was up or down, and how much it flapped |
+| netprobe — exporter health | Whether a flat line means a quiet network or a stalled exporter |
+
+They are plain files under [`grafana/dashboards`](examples/docker-compose/grafana/dashboards),
+picked up by the provisioning provider without any per-file configuration, and validated
+by `TestDashboards` in `dashboards_test.go` so a renamed metric fails the build rather
+than emptying a panel.
 
 ## Development
 
