@@ -1,6 +1,6 @@
 {
   "uid": "netprobe-slo",
-  "title": "netprobe — availability and loss budget",
+  "title": "netprobe - availability and loss budget",
   "description": "Availability, downtime and loss aggregated over the selected time range, measured against a target objective. Source: netprobe-exporter.",
   "tags": ["netprobe", "network", "slo"],
   "timezone": "browser",
@@ -235,7 +235,7 @@
       "id": 4,
       "type": "stat",
       "title": "Packet loss over the range",
-      "description": "1 − received/sent across every selected probe for the whole range. Computed from the counters, so it is independent of the probe interval.",
+      "description": "1 - received/sent across every selected probe for the whole range. Computed from the counters, so it is independent of the probe interval.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
       "targets": [
@@ -494,7 +494,7 @@
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sort(avg by (name, proto) (avg_over_time(netprobe_probe_success{name=~\"$target\",proto=~\"$proto\",scope=~\"$scope\"}[$__range])))",
           "instant": true,
-          "legendFormat": "{{name}} · {{proto}}"
+          "legendFormat": "{{name}} / {{proto}}"
         }
       ],
       "fieldConfig": {
@@ -548,7 +548,7 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "avg by (name, proto) (avg_over_time(netprobe_probe_success{name=~\"$target\",proto=~\"$proto\",scope=~\"$scope\"}[1h]))",
-          "legendFormat": "{{name}} · {{proto}}"
+          "legendFormat": "{{name}} / {{proto}}"
         }
       ],
       "fieldConfig": {

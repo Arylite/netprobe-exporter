@@ -1,6 +1,6 @@
 {
   "uid": "netprobe-health",
-  "title": "netprobe — exporter health",
+  "title": "netprobe - exporter health",
   "description": "Whether the exporter itself is healthy: build, scrape, probe freshness and process cost. Answers the question the other dashboards cannot, which is whether a flat line means the network is fine or the measurement stopped. Source: netprobe-exporter.",
   "tags": ["netprobe", "exporter", "meta"],
   "timezone": "browser",
@@ -592,6 +592,121 @@
           {
             "matcher": { "id": "byName", "options": "resident memory" },
             "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "Dependencies",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Failed name resolutions",
+      "description": "Cycles that never sent a packet because the name did not resolve. A flat line of zeroes here means a red probe elsewhere is really the network; a rise here means the resolver the exporter uses is the problem, and the packet counters will show nothing because nothing was sent.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (name) (rate(netprobe_dns_failures_total{job=~\"$job\",instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisSoftMax": 0.1,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Access link watcher",
+      "description": "Whether the STUN query is answering, and when the public address last changed. A reconnection explains an outage that touched every target at once, which no per-target panel can distinguish from the far side failing.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_wan_probe_success{job=~\"$job\",instance=~\"$instance\"}",
+          "legendFormat": "stun answering"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "increase(netprobe_wan_ip_changes_total{job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])",
+          "legendFormat": "reconnections"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "color": { "mode": "palette-classic-by-name" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisSoftMax": 1.2,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "stun answering" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#0ca30c" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "reconnections" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } },
+              { "id": "custom.drawStyle", "value": "bars" },
+              { "id": "custom.fillOpacity", "value": 70 }
+            ]
           }
         ]
       },

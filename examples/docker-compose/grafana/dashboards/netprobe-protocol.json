@@ -1,6 +1,6 @@
 {
   "uid": "netprobe-protocol",
-  "title": "netprobe — protocol comparison",
+  "title": "netprobe - protocol comparison",
   "description": "ICMP, TCP and UDP measured against the same hosts, and the gap between them. A protocol that behaves differently from its siblings points at shaping, filtering or a divergent path rather than at the network being slow. Source: netprobe-exporter.",
   "tags": ["netprobe", "network", "latency"],
   "timezone": "browser",
@@ -155,7 +155,7 @@
       "id": 3,
       "type": "stat",
       "title": "Packet loss (5m)",
-      "description": "1 − received/sent per protocol over five minutes. UDP against a rate-limited closed port reads high here by construction, not because the network is losing packets.",
+      "description": "1 - received/sent per protocol over five minutes. UDP against a rate-limited closed port reads high here by construction, not because the network is losing packets.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
       "targets": [

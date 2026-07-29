@@ -11,6 +11,19 @@ defaults:
   timeout: 2s
   count: 5
 
+# Feeds the "path and hops" dashboard, for the targets that opt in below.
+traceroute:
+  interval: 60s
+  timeout: 1s
+  max_hops: 20
+
+# Feeds the "access link" dashboard: the public address, and every time it
+# changes because the link renegotiated. Remove this block to stop the exporter
+# contacting a third party server.
+wan:
+  server: stun.l.google.com:19302
+  interval: 60s
+
 targets:
   - name: gateway
     host: 192.168.1.1
@@ -21,6 +34,7 @@ targets:
     host: 1.1.1.1
     labels: { scope: internet, provider: cloudflare }
     probes: [icmp, "tcp:443"]
+    traceroute: true
 
   - name: quad9-dns
     host: 9.9.9.9
@@ -28,11 +42,14 @@ targets:
     probes: [icmp, "tcp:443"]
 
   # Probed over both ICMP and TCP, which is what the "TCP minus ICMP" panel
-  # compares.
+  # compares, and over both address families, which is what makes a broken
+  # IPv6 path visible instead of hidden behind a happy-eyeballs fallback.
   - name: example-site
     host: www.example.com
     labels: { scope: internet, provider: example }
     probes: [icmp, "tcp:443"]
+    families: [ipv4, ipv6]
+    traceroute: true
 
   # A third field pins the local source port instead of taking an ephemeral one,
   # so a firewall rule or an ACL on the path can match the probe:

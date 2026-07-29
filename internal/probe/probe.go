@@ -1,4 +1,4 @@
-package main
+package probe
 
 import (
 	"errors"
@@ -9,36 +9,40 @@ import (
 	"time"
 
 	probing "github.com/prometheus-community/pro-bing"
+
+	"github.com/Arylite/netprobe-exporter/internal/config"
 )
 
 // interSample is the delay between the samples of a single cycle.
 const interSample = 100 * time.Millisecond
 
-// Result holds the aggregated samples of one probing cycle against one target.
+// Result holds the samples of one probing cycle against one target.
 type Result struct {
 	Sent, Received        int
 	Min, Avg, Max, StdDev time.Duration
-	IP                    string // address that was actually probed
-	Err                   error  // last sample error, for logging
+	RTTs                  []time.Duration // every sample that came back, in order
+	Err                   error           // last sample error, for logging
 }
 
 // Prober runs one probing cycle against a host.
 type Prober interface {
-	// Probe sends count samples to host and reports the aggregated timings.
-	// The host is passed on every call so that names are resolved each cycle.
+	// Probe sends count samples to host and reports the timings. The host is
+	// a literal address: the worker resolves the name once per cycle and hands
+	// the result down, so a cycle costs one lookup instead of one per sample.
 	Probe(host string, count int, timeout time.Duration) Result
 }
 
-func newProber(p Probe, t Target, privileged bool) Prober {
+// New builds the prober for one configured probe of one target.
+func New(p config.Probe, t config.Target, privileged bool) Prober {
 	switch p.Proto {
 	case "icmp":
 		return icmpProber{privileged: privileged}
 	case "tcp":
 		return tcpProber{port: p.Port, local: localAddr(p.Proto, p.LocalPort)}
 	case "udp":
-		return udpProber{port: p.Port, local: localAddr(p.Proto, p.LocalPort), payload: t.payload}
+		return udpProber{port: p.Port, local: localAddr(p.Proto, p.LocalPort), payload: t.PayloadBytes}
 	}
-	panic("unreachable: parseProbe rejects unknown protocols")
+	panic("unreachable: config.ParseProbe rejects unknown protocols")
 }
 
 // localAddr is the source address a probe binds to, nil for an ephemeral port.
@@ -71,6 +75,7 @@ func (p icmpProber) Probe(host string, count int, timeout time.Duration) Result 
 	pinger.Count = count
 	pinger.Interval = interSample
 	pinger.Timeout = timeout + interSample*time.Duration(count)
+	pinger.RecordRtts = true // the per-sample series feeds the histogram and the jitter
 	pinger.SetPrivileged(p.privileged)
 
 	if err := pinger.Run(); err != nil {
@@ -78,14 +83,10 @@ func (p icmpProber) Probe(host string, count int, timeout time.Duration) Result 
 		return r
 	}
 	s := pinger.Statistics()
-	r.Sent, r.Received = s.PacketsSent, s.PacketsRecv
-	if s.IPAddr != nil {
-		r.IP = s.IPAddr.String()
-	}
-	if r.Received == 0 {
-		return r
-	}
-	r.Min, r.Avg, r.Max, r.StdDev = s.MinRtt, s.AvgRtt, s.MaxRtt, s.StdDevRtt
+	// summarize rather than the pinger's own statistics, so that the three
+	// protocols report figures computed the same way.
+	r.summarize(s.Rtts)
+	r.Sent = s.PacketsSent
 	return r
 }
 
@@ -104,13 +105,10 @@ func (p tcpProber) Probe(host string, count int, timeout time.Duration) Result {
 		if i > 0 {
 			time.Sleep(interSample)
 		}
-		d, ip, err := tcpRTT(addr, p.local, timeout)
+		d, err := tcpRTT(addr, p.local, timeout)
 		if err != nil {
 			r.Err = err
 			continue
-		}
-		if r.IP == "" {
-			r.IP = ip
 		}
 		rtts = append(rtts, d)
 	}
@@ -122,21 +120,20 @@ func (p tcpProber) Probe(host string, count int, timeout time.Duration) Result {
 // completes, which happens when the SYN-ACK is received. The measurement carries
 // a few hundred microseconds of scheduler overhead and completes the handshake,
 // which is accurate enough for path monitoring but not for sub-millisecond work.
-func tcpRTT(addr string, local net.Addr, timeout time.Duration) (time.Duration, string, error) {
+func tcpRTT(addr string, local net.Addr, timeout time.Duration) (time.Duration, error) {
 	dialer := net.Dialer{Timeout: timeout, LocalAddr: local}
 	start := time.Now()
 	conn, err := dialer.Dial("tcp", addr)
 	d := time.Since(start)
 	if err != nil {
-		return 0, "", err
+		return 0, err
 	}
 	// Close with RST rather than FIN to avoid accumulating TIME_WAIT sockets.
 	if tc, ok := conn.(*net.TCPConn); ok {
 		_ = tc.SetLinger(0)
 	}
-	ip := hostOf(conn.RemoteAddr())
 	conn.Close()
-	return d, ip, nil
+	return d, nil
 }
 
 // UDP
@@ -155,10 +152,7 @@ func (p udpProber) Probe(host string, count int, timeout time.Duration) Result {
 		if i > 0 {
 			time.Sleep(interSample)
 		}
-		d, ip, err := udpRTT(addr, p.local, p.payload, timeout)
-		if ip != "" && r.IP == "" {
-			r.IP = ip
-		}
+		d, err := udpRTT(addr, p.local, p.payload, timeout)
 		if err != nil {
 			r.Err = err
 			continue
@@ -174,31 +168,31 @@ func (p udpProber) Probe(host string, count int, timeout time.Duration) Result {
 // connected UDP socket. Both outcomes prove the host was reached and are counted
 // as a success; only a timeout counts as a loss. This needs no raw socket and no
 // additional capability.
-func udpRTT(addr string, local net.Addr, payload []byte, timeout time.Duration) (time.Duration, string, error) {
+func udpRTT(addr string, local net.Addr, payload []byte, timeout time.Duration) (time.Duration, error) {
 	dialer := net.Dialer{Timeout: timeout, LocalAddr: local}
-	conn, err := dialer.Dial("udp", addr) // resolves and binds, sends nothing
+	conn, err := dialer.Dial("udp", addr) // binds, sends nothing
 	if err != nil {
-		return 0, "", err
+		return 0, err
 	}
 	defer conn.Close()
-	ip := hostOf(conn.RemoteAddr())
 
 	start := time.Now()
 	if _, err := conn.Write(payload); err != nil {
-		return 0, ip, err
+		return 0, err
 	}
 	_ = conn.SetReadDeadline(start.Add(timeout))
 	_, err = conn.Read(make([]byte, 1500))
 	d := time.Since(start)
 
 	if err == nil || errors.Is(err, syscall.ECONNREFUSED) {
-		return d, ip, nil
+		return d, nil
 	}
-	return 0, ip, err
+	return 0, err
 }
 
 func (r *Result) summarize(rtts []time.Duration) {
 	r.Received = len(rtts)
+	r.RTTs = rtts
 	if len(rtts) == 0 {
 		return
 	}
@@ -221,15 +215,4 @@ func (r *Result) summarize(rtts []time.Duration) {
 		sq += diff * diff
 	}
 	r.StdDev = time.Duration(math.Sqrt(sq / float64(len(rtts))))
-}
-
-func hostOf(a net.Addr) string {
-	if a == nil {
-		return ""
-	}
-	h, _, err := net.SplitHostPort(a.String())
-	if err != nil {
-		return a.String()
-	}
-	return h
 }

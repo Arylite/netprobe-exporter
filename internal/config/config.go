@@ -1,10 +1,13 @@
-package main
+// Package config loads and validates the exporter's configuration, and owns
+// the label sets every metric is built from.
+package config
 
 import (
 	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"sort"
 	"strconv"
@@ -15,10 +18,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// fixedLabels are attached to every probe metric, ahead of the user labels.
+// FixedLabels are attached to every probe metric, ahead of the user labels.
 // A user label reusing one of these names would produce a duplicate, so
 // configuration validation rejects it.
-var fixedLabels = []string{"name", "host", "proto", "port"}
+var FixedLabels = []string{"name", "host", "proto", "port", "family"}
+
+// PathLabels identify a traceroute, which belongs to a target rather than to
+// one of its probes and so carries no protocol and no port.
+var PathLabels = []string{"name", "host", "family"}
 
 type Defaults struct {
 	Interval time.Duration `yaml:"interval"`
@@ -26,25 +33,47 @@ type Defaults struct {
 	Count    int           `yaml:"count"`
 }
 
-type Target struct {
-	Name     string            `yaml:"name"`
-	Host     string            `yaml:"host"`
-	Labels   map[string]string `yaml:"labels"`
-	Probes   []string          `yaml:"probes"`
-	Payload  string            `yaml:"payload"` // hex, udp only
-	Interval time.Duration     `yaml:"interval"`
-	Timeout  time.Duration     `yaml:"timeout"`
-	Count    int               `yaml:"count"`
+// Traceroute configures the path probing shared by every target that asks for
+// it. It runs on its own slow interval: a trace costs up to max_hops timeouts
+// and answers a question that changes on the scale of minutes, not seconds.
+type Traceroute struct {
+	Interval time.Duration `yaml:"interval"`
+	Timeout  time.Duration `yaml:"timeout"`
+	MaxHops  int           `yaml:"max_hops"`
+}
 
-	parsed  []Probe // filled by parseConfig
-	payload []byte
+// WAN configures the STUN lookup of the public address. It is disabled unless
+// a server is named: the exporter should not talk to a third party that the
+// operator did not choose.
+type WAN struct {
+	Server   string        `yaml:"server"`
+	Interval time.Duration `yaml:"interval"`
+	Timeout  time.Duration `yaml:"timeout"`
+}
+
+type Target struct {
+	Name       string            `yaml:"name"`
+	Host       string            `yaml:"host"`
+	Labels     map[string]string `yaml:"labels"`
+	Probes     []string          `yaml:"probes"`
+	Families   []Family          `yaml:"families"`
+	Traceroute bool              `yaml:"traceroute"`
+	Payload    string            `yaml:"payload"` // hex, udp only
+	Interval   time.Duration     `yaml:"interval"`
+	Timeout    time.Duration     `yaml:"timeout"`
+	Count      int               `yaml:"count"`
+
+	Parsed       []Probe `yaml:"-"` // filled by Parse
+	PayloadBytes []byte  `yaml:"-"`
 }
 
 type Config struct {
-	Listen     string   `yaml:"listen"`
-	Privileged *bool    `yaml:"privileged"`
-	Defaults   Defaults `yaml:"defaults"`
-	Targets    []Target `yaml:"targets"`
+	Listen     string     `yaml:"listen"`
+	Privileged *bool      `yaml:"privileged"`
+	Defaults   Defaults   `yaml:"defaults"`
+	Traceroute Traceroute `yaml:"traceroute"`
+	WAN        WAN        `yaml:"wan"`
+	Targets    []Target   `yaml:"targets"`
 
 	LabelKeys []string `yaml:"-"` // union of every target's label keys, sorted
 }
@@ -74,10 +103,10 @@ func (p Probe) String() string {
 	return s
 }
 
-// parseProbe turns "icmp", "tcp:443" or "udp:53:5353" into a Probe. The
+// ParseProbe turns "icmp", "tcp:443" or "udp:53:5353" into a Probe. The
 // optional third field pins the local source port, which is ephemeral by
 // default; ICMP has no ports at all.
-func parseProbe(s string) (Probe, error) {
+func ParseProbe(s string) (Probe, error) {
 	proto, rest, hasPort := strings.Cut(strings.TrimSpace(s), ":")
 	proto = strings.ToLower(proto)
 	portStr, localStr, hasLocal := strings.Cut(rest, ":")
@@ -115,15 +144,15 @@ func parsePort(s string) (int, error) {
 	return n, nil
 }
 
-func LoadConfig(path string) (*Config, error) {
+func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return parseConfig(b)
+	return Parse(b)
 }
 
-func parseConfig(b []byte) (*Config, error) {
+func Parse(b []byte) (*Config, error) {
 	c := &Config{}
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true) // reject unknown keys instead of silently ignoring them
@@ -146,6 +175,24 @@ func parseConfig(b []byte) (*Config, error) {
 	}
 	if c.Defaults.Count <= 0 {
 		c.Defaults.Count = 5
+	}
+	if c.Traceroute.Interval <= 0 {
+		c.Traceroute.Interval = time.Minute
+	}
+	if c.Traceroute.Timeout <= 0 {
+		c.Traceroute.Timeout = time.Second
+	}
+	if c.Traceroute.MaxHops <= 0 {
+		c.Traceroute.MaxHops = 20
+	}
+	if c.Traceroute.MaxHops > 64 {
+		return nil, fmt.Errorf("config: traceroute max_hops %d is above 64", c.Traceroute.MaxHops)
+	}
+	if c.WAN.Interval <= 0 {
+		c.WAN.Interval = time.Minute
+	}
+	if c.WAN.Timeout <= 0 {
+		c.WAN.Timeout = c.Defaults.Timeout
 	}
 	if len(c.Targets) == 0 {
 		return nil, errors.New("config: no targets")
@@ -179,11 +226,31 @@ func parseConfig(b []byte) (*Config, error) {
 			return nil, fmt.Errorf("config: target %q: no probes", t.Name)
 		}
 		for _, s := range t.Probes {
-			p, err := parseProbe(s)
+			p, err := ParseProbe(s)
 			if err != nil {
 				return nil, fmt.Errorf("config: target %q: %w", t.Name, err)
 			}
-			t.parsed = append(t.parsed, p)
+			t.Parsed = append(t.Parsed, p)
+		}
+
+		families := map[Family]bool{}
+		for _, f := range t.Families {
+			if f != FamilyIPv4 && f != FamilyIPv6 {
+				return nil, fmt.Errorf("config: target %q: unknown family %q (want ipv4 or ipv6)", t.Name, f)
+			}
+			if families[f] {
+				return nil, fmt.Errorf("config: target %q: family %q listed twice", t.Name, f)
+			}
+			families[f] = true
+			// A literal address belongs to one family; probing it over the
+			// other reports a permanent outage that is really a typo.
+			if addr, err := netip.ParseAddr(t.Host); err == nil && !f.Matches(addr) {
+				return nil, fmt.Errorf("config: target %q: host %s is not %s", t.Name, t.Host, f)
+			}
+		}
+		if len(t.Families) == 0 {
+			// Left to the resolver, exactly as a client that connects by name.
+			t.Families = []Family{FamilyAuto}
 		}
 
 		if t.Payload != "" {
@@ -191,17 +258,17 @@ func parseConfig(b []byte) (*Config, error) {
 			if err != nil {
 				return nil, fmt.Errorf("config: target %q: payload is not valid hex: %w", t.Name, err)
 			}
-			t.payload = raw
+			t.PayloadBytes = raw
 		}
-		if len(t.payload) == 0 {
-			t.payload = []byte{0} // a datagram must carry at least one byte
+		if len(t.PayloadBytes) == 0 {
+			t.PayloadBytes = []byte{0} // a datagram must carry at least one byte
 		}
 
 		for k := range t.Labels {
 			if !model.LabelName(k).IsValid() {
 				return nil, fmt.Errorf("config: target %q: %q is not a valid Prometheus label name", t.Name, k)
 			}
-			for _, r := range fixedLabels {
+			for _, r := range FixedLabels {
 				if k == r {
 					return nil, fmt.Errorf("config: target %q: label %q is reserved by the exporter", t.Name, k)
 				}
@@ -231,11 +298,23 @@ func labelUnion(targets []Target) []string {
 	return keys
 }
 
-// labelValues returns t's label values aligned with c.LabelKeys.
-func (c *Config) labelValues(t Target) []string {
+// LabelValues returns t's label values aligned with c.LabelKeys.
+func (c *Config) LabelValues(t Target) []string {
 	vals := make([]string, len(c.LabelKeys))
 	for i, k := range c.LabelKeys {
 		vals[i] = t.Labels[k]
 	}
 	return vals
+}
+
+// SeriesLabels are the label values of one probe series, in the order the
+// metrics declare them: FixedLabels first, then the user labels.
+func (c *Config) SeriesLabels(t Target, p Probe, f Family) []string {
+	return append([]string{t.Name, t.Host, p.Proto, p.PortLabel(), string(f)}, c.LabelValues(t)...)
+}
+
+// PathSeriesLabels are the label values of one traceroute series, matching
+// PathLabels followed by the user labels.
+func (c *Config) PathSeriesLabels(t Target, f Family) []string {
+	return append([]string{t.Name, t.Host, string(f)}, c.LabelValues(t)...)
 }

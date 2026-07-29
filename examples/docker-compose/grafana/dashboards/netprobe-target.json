@@ -1,6 +1,6 @@
 {
   "uid": "netprobe-target",
-  "title": "netprobe — target drilldown",
+  "title": "netprobe - target drilldown",
   "description": "Everything measured for one target: round-trip time envelope, loss, jitter and name resolution, split by protocol. Source: netprobe-exporter.",
   "tags": ["netprobe", "network", "latency"],
   "timezone": "browser",
@@ -158,7 +158,7 @@
       "id": 3,
       "type": "stat",
       "title": "Packet loss (5m)",
-      "description": "1 − received/sent over five minutes, per protocol.",
+      "description": "1 - received/sent over five minutes, per protocol.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
       "targets": [
@@ -365,7 +365,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Packet loss",
-      "description": "1 − received/sent over the rolling window. The dashed line marks 2%.",
+      "description": "1 - received/sent over the rolling window. The dashed line marks 2%.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 9, "w": 8, "x": 0, "y": 18 },
       "targets": [
@@ -598,6 +598,198 @@
         "cellHeight": "sm",
         "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" },
         "sortBy": [{ "displayName": "Scrapes seen", "desc": true }]
+      }
+    },
+    {
+      "id": 104,
+      "type": "row",
+      "title": "Quality, resolution and path",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Call quality",
+      "description": "Mean opinion score derived from this target's latency, jitter and loss. Above 4.0 a call is transparent, below 3.6 callers start repeating themselves.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 39 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_mos{name=\"$target\",proto=~\"$proto\"}",
+          "legendFormat": "{{proto}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "min": 1,
+          "max": 4.5,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#d03b3b", "value": null },
+              { "color": "#ec835a", "value": 3.1 },
+              { "color": "#fab219", "value": 3.6 },
+              { "color": "#0ca30c", "value": 4.0 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Latency percentiles",
+      "description": "True quantiles over the rolling window, computed from the per-sample histogram. The envelope above shows the best and worst sample of each cycle; this shows where the bulk of the samples actually sit, which a single outlier cannot distort.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 39 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum by (le, proto) (rate(netprobe_sample_rtt_seconds_bucket{name=\"$target\",proto=~\"$proto\"}[$__rate_interval])))",
+          "legendFormat": "{{proto}} p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, proto) (rate(netprobe_sample_rtt_seconds_bucket{name=\"$target\",proto=~\"$proto\"}[$__rate_interval])))",
+          "legendFormat": "{{proto}} p95"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum by (le, proto) (rate(netprobe_sample_rtt_seconds_bucket{name=\"$target\",proto=~\"$proto\"}[$__rate_interval])))",
+          "legendFormat": "{{proto}} p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "min": 0,
+          "color": { "mode": "palette-classic-by-name" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Name resolution time",
+      "description": "How long this target's name took to resolve, measured once per cycle. Empty when the target is configured with a literal address. A slow resolver delays every connection before a packet is sent, so it never appears in the round-trip time above.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 47 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_dns_lookup_seconds{name=\"$target\",proto=~\"$proto\"}",
+          "legendFormat": "{{proto}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc", "maxHeight": 600 }
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Round-trip time per hop",
+      "description": "The route to this target, hop by hop, when traceroute is enabled for it. The hop where the line steps up is the segment adding the delay; if the first hops stay flat the local network and the access link are not the cause.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 47 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "netprobe_path_hop_rtt_seconds{name=\"$target\"}",
+          "legendFormat": "hop {{hop}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "min": 0,
+          "color": { "mode": "continuous-BlPu" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 8,
+            "spanNulls": false,
+            "axisBorderShow": false,
+            "scaleDistribution": { "type": "linear" },
+            "insertNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "asc", "maxHeight": 600 }
       }
     }
   ]
